@@ -173,7 +173,6 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 		if (!data) {
 			return [];
 		}
-		this._clearModelCache(vendor);
 		const modelInformation: vscode.LanguageModelChatInformation[] = await data.provider.provideLanguageModelChatInformation(options, token) ?? [];
 		const modelMetadataAndIdentifier: ILanguageModelChatMetadataAndIdentifier[] = modelInformation.map((m): ILanguageModelChatMetadataAndIdentifier => {
 			let auth;
@@ -215,8 +214,8 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 			};
 		});
 
+		this._clearModelCache(vendor);
 		for (let i = 0; i < modelMetadataAndIdentifier.length; i++) {
-
 			this._localModels.set(modelMetadataAndIdentifier[i].identifier, {
 				metadata: modelMetadataAndIdentifier[i].metadata,
 				info: modelInformation[i]
@@ -336,14 +335,17 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 				break;
 			}
 		}
-		if (!defaultModelId) {
+		if (!defaultModelId && !forceResolveModels) {
 			// Maybe the default wasn't cached so we will try again with resolving the models too
 			return this.getDefaultLanguageModel(extension, true);
 		}
 		return this.getLanguageModelByIdentifier(extension, defaultModelId);
 	}
 
-	async getLanguageModelByIdentifier(extension: IExtensionDescription, modelId: string): Promise<vscode.LanguageModelChat | undefined> {
+	async getLanguageModelByIdentifier(extension: IExtensionDescription, modelId: string | undefined): Promise<vscode.LanguageModelChat | undefined> {
+		if (!modelId) {
+			return undefined;
+		}
 
 		const model = this._localModels.get(modelId);
 		if (!model) {

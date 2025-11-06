@@ -72,6 +72,8 @@ export class PromptHoverProvider implements HoverProvider {
 			for (const attribute of header.attributes) {
 				if (attribute.range.containsPosition(position)) {
 					switch (attribute.key) {
+						case PromptHeaderAttributes.name:
+							return this.createHover(localize('promptHeader.instructions.name', 'The name of the instruction file as shown in the UI. If not set, the name is derived from the file name.'), attribute.range);
 						case PromptHeaderAttributes.description:
 							return this.createHover(localize('promptHeader.instructions.description', 'The description of the instruction file. It can be used to provide additional context or information about the instructions and is passed to the language model as part of the prompt.'), attribute.range);
 						case PromptHeaderAttributes.applyTo:
@@ -84,6 +86,8 @@ export class PromptHoverProvider implements HoverProvider {
 			for (const attribute of header.attributes) {
 				if (attribute.range.containsPosition(position)) {
 					switch (attribute.key) {
+						case PromptHeaderAttributes.name:
+							return this.createHover(localize('promptHeader.agent.name', 'The name of the agent as shown in the UI.'), attribute.range);
 						case PromptHeaderAttributes.description:
 							return this.createHover(localize('promptHeader.agent.description', 'The description of the custom agent, what it does and when to use it.'), attribute.range);
 						case PromptHeaderAttributes.argumentHint:
@@ -103,6 +107,8 @@ export class PromptHoverProvider implements HoverProvider {
 			for (const attribute of header.attributes) {
 				if (attribute.range.containsPosition(position)) {
 					switch (attribute.key) {
+						case PromptHeaderAttributes.name:
+							return this.createHover(localize('promptHeader.prompt.name', 'The name of the prompt. This is also the name of the slash command that will run this prompt.'), attribute.range);
 						case PromptHeaderAttributes.description:
 							return this.createHover(localize('promptHeader.prompt.description', 'The description of the reusable prompt, what it does and when to use it.'), attribute.range);
 						case PromptHeaderAttributes.argumentHint:
@@ -193,7 +199,7 @@ export class PromptHoverProvider implements HoverProvider {
 			const agent = this.chatModeService.findModeByName(value.value);
 			if (agent) {
 				const description = agent.description.get() || (isBuiltinChatMode(agent) ? localize('promptHeader.prompt.agent.builtInDesc', 'Built-in agent') : localize('promptHeader.prompt.agent.customDesc', 'Custom agent'));
-				lines.push(`\`${agent.name}\`: ${description}`);
+				lines.push(`\`${agent.name.get()}\`: ${description}`);
 			}
 		} else {
 			const agents = this.chatModeService.getModes();
@@ -203,7 +209,7 @@ export class PromptHoverProvider implements HoverProvider {
 			// Built-in agents
 			lines.push(localize('promptHeader.prompt.agent.builtin', '**Built-in agents:**'));
 			for (const agent of agents.builtin) {
-				lines.push(`- \`${agent.name}\`: ${agent.description.get() || agent.label}`);
+				lines.push(`- \`${agent.name.get()}\`: ${agent.description.get() || agent.label.get()}`);
 			}
 
 			// Custom agents
@@ -212,7 +218,7 @@ export class PromptHoverProvider implements HoverProvider {
 				lines.push(localize('promptHeader.prompt.agent.custom', '**Custom agents:**'));
 				for (const agent of agents.custom) {
 					const description = agent.description.get();
-					lines.push(`- \`${agent.name}\`: ${description || localize('promptHeader.prompt.agent.customDesc', 'Custom agent')}`);
+					lines.push(`- \`${agent.name.get()}\`: ${description || localize('promptHeader.prompt.agent.customDesc', 'Custom agent')}`);
 				}
 			}
 		}

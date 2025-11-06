@@ -3,4 +3,5 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// empty placeholder declaration for the `secondarySidebar`-contribution point
+// empty placeholder declaration for the `scm/artifactGroup/context`-menu contribution point
+// https://github.com/microsoft/vscode/issues/253665

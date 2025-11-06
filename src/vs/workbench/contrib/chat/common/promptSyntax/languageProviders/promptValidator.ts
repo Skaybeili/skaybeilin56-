@@ -16,7 +16,7 @@ import { ChatModeKind } from '../../constants.js';
 import { ILanguageModelChatMetadata, ILanguageModelsService } from '../../languageModels.js';
 import { ILanguageModelToolsService } from '../../languageModelToolsService.js';
 import { getPromptsTypeForLanguageId, PromptsType } from '../promptTypes.js';
-import { GithubPromptHeaderAttributes, IArrayValue, IHeaderAttribute, ParsedPromptFile, PromptHeaderAttributes } from '../promptFileParser.js';
+import { GithubPromptHeaderAttributes, IArrayValue, IHeaderAttribute, IStringValue, ParsedPromptFile, PROMPT_NAME_REGEXP, PromptHeaderAttributes, Target } from '../promptFileParser.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { Delayer } from '../../../../../../base/common/async.js';
 import { ResourceMap } from '../../../../../../base/common/map.js';
@@ -91,7 +91,8 @@ export class PromptValidator {
 		// Validate variable references (tool or toolset names)
 		if (body.variableReferences.length && !isGitHubTarget) {
 			const headerTools = promptAST.header?.tools;
-			const headerToolsMap = headerTools ? this.languageModelToolsService.toToolAndToolSetEnablementMap(headerTools) : undefined;
+			const headerTarget = promptAST.header?.target;
+			const headerToolsMap = headerTools ? this.languageModelToolsService.toToolAndToolSetEnablementMap(headerTools, headerTarget) : undefined;
 
 			const available = new Set<string>(this.languageModelToolsService.getQualifiedToolNames());
 			const deprecatedNames = this.languageModelToolsService.getDeprecatedQualifiedToolNames();
@@ -124,6 +125,7 @@ export class PromptValidator {
 		const isGitHubTarget = isGithubTarget(promptType, header.target);
 		this.checkForInvalidArguments(attributes, promptType, isGitHubTarget, report);
 
+		this.validateName(attributes, isGitHubTarget, report);
 		this.validateDescription(attributes, report);
 		this.validateArgumentHint(attributes, report);
 		switch (promptType) {
@@ -172,6 +174,29 @@ export class PromptValidator {
 						break;
 				}
 			}
+		}
+	}
+
+
+
+	private validateName(attributes: IHeaderAttribute[], isGitHubTarget: boolean, report: (markers: IMarkerData) => void): void {
+		const nameAttribute = attributes.find(attr => attr.key === PromptHeaderAttributes.name);
+		if (!nameAttribute) {
+			if (isGitHubTarget) {
+				report(toMarker(localize('promptValidator.nameRequiredForGithubTarget', "The 'name' attribute is required when target is 'github-copilot'."), new Range(1, 1, 1, 4), MarkerSeverity.Error));
+			}
+			return;
+		}
+		if (nameAttribute.value.type !== 'string') {
+			report(toMarker(localize('promptValidator.nameMustBeString', "The 'name' attribute must be a string."), nameAttribute.range, MarkerSeverity.Error));
+			return;
+		}
+		if (nameAttribute.value.value.trim().length === 0) {
+			report(toMarker(localize('promptValidator.nameShouldNotBeEmpty', "The 'name' attribute must not be empty."), nameAttribute.value.range, MarkerSeverity.Error));
+			return;
+		}
+		if (!PROMPT_NAME_REGEXP.test(nameAttribute.value.value)) {
+			report(toMarker(localize('promptValidator.nameInvalidCharacters', "The 'name' attribute can only consist of letters, digits, underscores, hyphens, and periods."), nameAttribute.value.range, MarkerSeverity.Error));
 		}
 	}
 
@@ -268,20 +293,23 @@ export class PromptValidator {
 			report(toMarker(localize('promptValidator.attributeMustBeNonEmpty', "The '{0}' attribute must be a non-empty string.", attribute.key), attribute.value.range, MarkerSeverity.Error));
 			return undefined;
 		}
+		return this.validateAgentValue(attribute.value, report);
+	}
 
+	private validateAgentValue(value: IStringValue, report: (markers: IMarkerData) => void): IChatMode | undefined {
 		const agents = this.chatModeService.getModes();
 		const availableAgents = [];
 
 		// Check if agent exists in builtin or custom agents
 		for (const agent of Iterable.concat(agents.builtin, agents.custom)) {
-			if (agent.name === agentValue) {
+			if (agent.name.get() === value.value) {
 				return agent;
 			}
-			availableAgents.push(agent.name); // collect all available agent names
+			availableAgents.push(agent.name.get()); // collect all available agent names
 		}
 
-		const errorMessage = localize('promptValidator.agentNotFound', "Unknown agent '{0}'. Available agents: {1}.", agentValue, availableAgents.join(', '));
-		report(toMarker(errorMessage, attribute.value.range, MarkerSeverity.Warning));
+		const errorMessage = localize('promptValidator.agentNotFound', "Unknown agent '{0}'. Available agents: {1}.", value.value, availableAgents.join(', '));
+		report(toMarker(errorMessage, value.range, MarkerSeverity.Warning));
 		return undefined;
 	}
 
@@ -390,6 +418,8 @@ export class PromptValidator {
 					case 'agent':
 						if (prop.value.type !== 'string' || prop.value.value.trim().length === 0) {
 							report(toMarker(localize('promptValidator.handoffAgentMustBeNonEmptyString', "The 'agent' property in a handoff must be a non-empty string."), prop.value.range, MarkerSeverity.Error));
+						} else {
+							this.validateAgentValue(prop.value, report);
 						}
 						break;
 					case 'prompt':
@@ -435,9 +465,9 @@ export class PromptValidator {
 }
 
 const allAttributeNames = {
-	[PromptsType.prompt]: [PromptHeaderAttributes.description, PromptHeaderAttributes.model, PromptHeaderAttributes.tools, PromptHeaderAttributes.mode, PromptHeaderAttributes.agent, PromptHeaderAttributes.argumentHint],
-	[PromptsType.instructions]: [PromptHeaderAttributes.description, PromptHeaderAttributes.applyTo, PromptHeaderAttributes.excludeAgent],
-	[PromptsType.agent]: [PromptHeaderAttributes.description, PromptHeaderAttributes.model, PromptHeaderAttributes.tools, PromptHeaderAttributes.advancedOptions, PromptHeaderAttributes.handOffs, PromptHeaderAttributes.argumentHint, PromptHeaderAttributes.target]
+	[PromptsType.prompt]: [PromptHeaderAttributes.name, PromptHeaderAttributes.description, PromptHeaderAttributes.model, PromptHeaderAttributes.tools, PromptHeaderAttributes.mode, PromptHeaderAttributes.agent, PromptHeaderAttributes.argumentHint],
+	[PromptsType.instructions]: [PromptHeaderAttributes.name, PromptHeaderAttributes.description, PromptHeaderAttributes.applyTo, PromptHeaderAttributes.excludeAgent],
+	[PromptsType.agent]: [PromptHeaderAttributes.name, PromptHeaderAttributes.description, PromptHeaderAttributes.model, PromptHeaderAttributes.tools, PromptHeaderAttributes.advancedOptions, PromptHeaderAttributes.handOffs, PromptHeaderAttributes.argumentHint, PromptHeaderAttributes.target]
 };
 const githubCopilotAgentAttributeNames = [PromptHeaderAttributes.name, PromptHeaderAttributes.description, PromptHeaderAttributes.tools, PromptHeaderAttributes.target, GithubPromptHeaderAttributes.mcpServers];
 const recommendedAttributeNames = {
@@ -465,7 +495,7 @@ export const knownGithubCopilotTools: Record<string, string> = {
 	'custom-agent': localize('githubCopilotTools.customAgent', 'Call custom agents')
 };
 export function isGithubTarget(promptType: PromptsType, target: string | undefined): boolean {
-	return promptType === PromptsType.agent && target === 'github-copilot';
+	return promptType === PromptsType.agent && target === Target.GitHubCopilot;
 }
 
 function toMarker(message: string, range: Range, severity = MarkerSeverity.Error): IMarkerData {
